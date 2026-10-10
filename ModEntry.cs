@@ -2,6 +2,8 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.Locations;
+using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 using StardewValley.Tools;
 using System;
@@ -167,7 +169,7 @@ namespace SmartTool
                     if (dirt.crop != null)
                     {
                         // ready to pick, don't cover their hands with a tool
-                        if (dirt.crop.readyForHarvest.Value)
+                        if (dirt.CanHarvest())
                             return null;
 
                         if (this.config.WaterDryCrops && dirt.needsWatering())
@@ -238,7 +240,7 @@ namespace SmartTool
 
                 int level = 0;
                 if (tool is Tool t)
-                    level = t.upgradeLevel.Value;
+                    level = t.UpgradeLevel;
 
                 if (level > bestLevel)
                 {
