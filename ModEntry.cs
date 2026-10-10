@@ -169,7 +169,7 @@ namespace SmartTool
                     if (dirt.crop != null)
                     {
                         // ready to pick, don't cover their hands with a tool
-                        if (dirt.CanHarvest())
+                        if (dirt.readyForHarvest())
                             return null;
 
                         if (this.config.WaterDryCrops && dirt.needsWatering())
