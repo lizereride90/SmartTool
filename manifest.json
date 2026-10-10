@@ -1,7 +1,7 @@
 {
   "Name": "Smart Tool",
   "Author": "misticraven1",
-  "Version": "1.0.0",
+  "Version": "1.1.0",
   "Description": "Auto-picks the right tool when you tap a tile. Made for touch screens.",
   "UniqueID": "misticraven1.SmartTool",
   "EntryDll": "SmartTool.dll",

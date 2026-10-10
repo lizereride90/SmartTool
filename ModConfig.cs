@@ -5,9 +5,13 @@ namespace SmartTool
     {
         public bool Enabled { get; set; } = true;
 
+        public StardewModdingAPI.SButton ToggleButton { get; set; } = StardewModdingAPI.SButton.F;
+
         public bool WaterDryCrops { get; set; } = true;
 
         public bool UseScytheOnGrass { get; set; } = true;
+
+        public bool ShakeFruitTreesByHand { get; set; } = true;
 
         public bool SwitchToWeaponInMines { get; set; } = true;
 

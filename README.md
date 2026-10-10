@@ -3,8 +3,11 @@
 Tap a tile and get the right tool. Built for touch screens (Cinderbox / Android) but works on PC too.
 
 - Stone -> pickaxe, twig/tree/log -> axe
-- Dry crop -> watering can, dirt -> hoe
-- Grass -> scythe, monsters in the mine -> sword
+- Dry crop (field or pot) -> watering can, bare dirt -> hoe
+- Grass, weeds, dead crops -> scythe, monsters in the mine -> sword
+- Fruit trees, chests, machines and furniture are left alone so you interact by hand
+
+Press F (rebindable) or run `smarttool_toggle` in the SMAPI console to turn it on or off.
 
 ## Settings
 

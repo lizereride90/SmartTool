@@ -3,6 +3,7 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Locations;
+using StardewValley.Monsters;
 using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 using StardewValley.Tools;
@@ -20,6 +21,19 @@ namespace SmartTool
 
             helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
             helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+
+            helper.ConsoleCommands.Add("smarttool_toggle", "Turns Smart Tool on or off.", this.OnToggleCommand);
+        }
+
+        private void OnToggleCommand(string cmd, string[] args)
+        {
+            this.config.Enabled = !this.config.Enabled;
+            this.Helper.WriteConfig(this.config);
+
+            string state = this.config.Enabled ? "on" : "off";
+            this.Monitor.Log($"Smart Tool is now {state}.", LogLevel.Info);
+            if (Context.IsWorldReady)
+                Game1.addHUDMessage(new HUDMessage($"Smart Tool {state}", 2));
         }
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
@@ -42,10 +56,18 @@ namespace SmartTool
                 setValue: value => this.config.Enabled = value
             );
 
+            gmcm.AddKeybind(
+                mod: this.ModManifest,
+                name: () => "Toggle key",
+                tooltip: () => "Press this to turn Smart Tool on or off. Console command smarttool_toggle does the same.",
+                getValue: () => this.config.ToggleButton,
+                setValue: value => this.config.ToggleButton = value
+            );
+
             gmcm.AddBoolOption(
                 mod: this.ModManifest,
                 name: () => "Water dry crops",
-                tooltip: () => "Grab the watering can when you tap a thirsty crop.",
+                tooltip: () => "Grab the watering can when you tap a thirsty crop, including garden pots.",
                 getValue: () => this.config.WaterDryCrops,
                 setValue: value => this.config.WaterDryCrops = value
             );
@@ -53,9 +75,17 @@ namespace SmartTool
             gmcm.AddBoolOption(
                 mod: this.ModManifest,
                 name: () => "Scythe for weeds",
-                tooltip: () => "Grab the scythe when you tap grass or weeds.",
+                tooltip: () => "Grab the scythe for grass, weeds and dead crops.",
                 getValue: () => this.config.UseScytheOnGrass,
                 setValue: value => this.config.UseScytheOnGrass = value
+            );
+
+            gmcm.AddBoolOption(
+                mod: this.ModManifest,
+                name: () => "Shake fruit trees by hand",
+                tooltip: () => "Leaves your hands free on fruit trees so you shake instead of chop.",
+                getValue: () => this.config.ShakeFruitTreesByHand,
+                setValue: value => this.config.ShakeFruitTreesByHand = value
             );
 
             gmcm.AddBoolOption(
@@ -77,10 +107,20 @@ namespace SmartTool
 
         private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
         {
-            if (this.config == null || !this.config.Enabled)
+            if (this.config == null)
                 return;
 
             if (!Context.IsWorldReady || !Context.IsPlayerFree)
+                return;
+
+            // toggle key works even when the mod is off
+            if (e.Button == this.config.ToggleButton)
+            {
+                this.OnToggleCommand("smarttool_toggle", Array.Empty<string>());
+                return;
+            }
+
+            if (!this.config.Enabled)
                 return;
 
             // tool use comes through as left click on touch/mouse, X on controller
@@ -96,11 +136,10 @@ namespace SmartTool
             if (loc == null)
                 return;
 
-            string wanted = this.FigureOutTool(loc, tile, who);
+            string wanted = this.FigureOutTool(loc, tile);
             if (wanted == null)
                 return;
 
-            // already holding it, nothing to do
             if (this.Holding(who, wanted))
                 return;
 
@@ -116,14 +155,14 @@ namespace SmartTool
             }
         }
 
-        private string FigureOutTool(GameLocation loc, Vector2 tile, Farmer who)
+        private string FigureOutTool(GameLocation loc, Vector2 tile)
         {
             // mines: if something is close, sword first
             if (this.config.SwitchToWeaponInMines && loc is MineShaft)
             {
                 foreach (var npc in loc.characters)
                 {
-                    if (npc is StardewValley.Monsters.Monster monster && !monster.IsInvisible)
+                    if (npc is Monster monster && !monster.IsInvisible)
                     {
                         float dist = Vector2.Distance(monster.Tile, tile);
                         if (dist < 2.5f)
@@ -132,9 +171,15 @@ namespace SmartTool
                 }
             }
 
-            // dropped stuff on the ground (twig, stone, weed)
             if (loc.Objects.TryGetValue(tile, out var obj))
             {
+                // chests, machines, furniture, crab pots: hands off, let them interact
+                if (obj is Chest || obj is BigCraftable || obj is Furniture || obj is CrabPot || obj is Cask)
+                    return null;
+
+                if (obj is IndoorPot pot)
+                    return this.PotTool(pot);
+
                 string name = obj.Name ?? "";
 
                 if (name.Contains("Stone", StringComparison.OrdinalIgnoreCase))
@@ -144,31 +189,26 @@ namespace SmartTool
                     return "Axe";
 
                 if (name.Contains("Weed", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (this.config.UseScytheOnGrass)
-                        return "Scythe";
-                    return null;
-                }
+                    return this.config.UseScytheOnGrass ? "Scythe" : null;
 
-                // quartz, gems, etc lying around
                 if (name.Contains("Quartz", StringComparison.OrdinalIgnoreCase)
                     || name.Contains("Gem", StringComparison.OrdinalIgnoreCase)
-                    || name.Contains("Ore", StringComparison.OrdinalIgnoreCase))
+                    || name.Contains("Ore", StringComparison.OrdinalIgnoreCase)
+                    || name.Contains("Meteorite", StringComparison.OrdinalIgnoreCase))
                     return "Pickaxe";
-
-                // a growing crop in a pot or on the ground, leave hands free
-                if (obj is IndoorPot)
-                    return null;
             }
 
-            // dirt, trees, grass
             if (loc.terrainFeatures.TryGetValue(tile, out var feature))
             {
                 if (feature is HoeDirt dirt)
                 {
                     if (dirt.crop != null)
                     {
-                        // ready to pick, don't cover their hands with a tool
+                        // dead crop clears with a scythe
+                        if (dirt.crop.dead.Value)
+                            return this.config.UseScytheOnGrass ? "Scythe" : null;
+
+                        // ready to pick, keep hands empty
                         if (dirt.readyForHarvest())
                             return null;
 
@@ -182,46 +222,63 @@ namespace SmartTool
                 }
 
                 if (feature is Grass)
-                {
-                    if (this.config.UseScytheOnGrass)
-                        return "Scythe";
-                    return null;
-                }
+                    return this.config.UseScytheOnGrass ? "Scythe" : null;
 
-                if (feature is Tree || feature is FruitTree || feature is GiantCrop)
+                if (feature is GiantCrop)
+                    return "Axe";
+
+                if (feature is FruitTree)
+                    return this.config.ShakeFruitTreesByHand ? null : "Axe";
+
+                if (feature is Tree)
                     return "Axe";
             }
 
-            // big stumps, logs, boulders, meteorites
+            // big stumps, logs, boulders, meteorites are 2x2, so check the whole footprint
             foreach (var clump in loc.resourceClumps)
             {
                 if (clump == null)
                     continue;
 
-                Vector2 pos = clump.Tile;
-                if ((int)pos.X == (int)tile.X && (int)pos.Y == (int)tile.Y)
-                {
-                    int id = clump.parentSheetIndex.Value;
-                    if (id == 622 || id == 672 || id == 756 || id == 758)
-                        return "Pickaxe";
-                    return "Axe";
-                }
+                var box = new Rectangle((int)clump.Tile.X, (int)clump.Tile.Y, clump.width.Value, clump.height.Value);
+                if (!box.Contains((int)tile.X, (int)tile.Y))
+                    continue;
+
+                int id = clump.parentSheetIndex.Value;
+                if (id == 622 || id == 672 || id == 756 || id == 758)
+                    return "Pickaxe";
+                return "Axe";
             }
 
-            // tillable soil with nothing on it
+            // bare tillable soil
             if (loc.doesTileHaveProperty((int)tile.X, (int)tile.Y, "Diggable", "Back") != null)
                 return "Hoe";
 
             return null;
         }
 
+        private string PotTool(IndoorPot pot)
+        {
+            try
+            {
+                var dirt = pot.hoeDirt.Value;
+                if (dirt?.crop != null)
+                {
+                    if (dirt.readyForHarvest())
+                        return null;
+                    if (this.config.WaterDryCrops && dirt.needsWatering())
+                        return "WateringCan";
+                    return null;
+                }
+            }
+            catch { }
+
+            return null;
+        }
+
         private bool Holding(Farmer who, string wanted)
         {
-            var current = who.CurrentTool;
-            if (current == null)
-                return false;
-
-            return this.Matches(current, wanted);
+            return who.CurrentTool != null && this.Matches(who.CurrentTool, wanted);
         }
 
         private int FindBestSlot(Farmer who, string wanted)
@@ -232,16 +289,10 @@ namespace SmartTool
             for (int i = 0; i < who.Items.Count; i++)
             {
                 var item = who.Items[i];
-                if (item is not Item tool)
+                if (item == null || !this.Matches(item, wanted))
                     continue;
 
-                if (!this.Matches(tool, wanted))
-                    continue;
-
-                int level = 0;
-                if (tool is Tool t)
-                    level = t.UpgradeLevel;
-
+                int level = item is Tool tool ? tool.UpgradeLevel : 0;
                 if (level > bestLevel)
                 {
                     bestLevel = level;
@@ -271,7 +322,6 @@ namespace SmartTool
                     return item is WateringCan;
 
                 case "Scythe":
-                    // scythe is a melee weapon with its own id, but name check is fine
                     return name.IndexOf("Scythe", StringComparison.OrdinalIgnoreCase) >= 0;
 
                 case "Weapon":
