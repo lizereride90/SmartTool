@@ -174,7 +174,7 @@ namespace SmartTool
             if (loc.Objects.TryGetValue(tile, out var obj))
             {
                 // chests, machines, furniture, crab pots: hands off, let them interact
-                if (obj is Chest || obj is BigCraftable || obj is Furniture || obj is CrabPot || obj is Cask)
+                if (obj is Chest || obj.bigCraftable.Value || obj is Furniture || obj is CrabPot || obj is Cask)
                     return null;
 
                 if (obj is IndoorPot pot)
